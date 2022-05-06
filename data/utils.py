@@ -97,6 +97,14 @@ def list_files(root, suffix, prefix=False):
 def multiclass_noisify(y, P, random_state=123):
     """ Flip classes according to transition probability matrix T.
     It expects a number between 0 and the number of classes - 1.
+
+    Args:
+        y (list): a list of index label
+        P (matrix): n x n matrix with values between [0, 1]
+        random_state (int, optional): random seed. Defaults to 123.
+
+    Returns:
+        noisy y
     """
     # print(np.max(y), P.shape[0])
     assert P.shape[0] == P.shape[1]
@@ -113,7 +121,8 @@ def multiclass_noisify(y, P, random_state=123):
     for idx in np.arange(m):
         i = y[idx]
         # draw a vector with only an 1
-        flipped = flipper.multinomial(1, P[i, :][0], 1)[0]
+        flipped = flipper.multinomial(1, P[i, :], 1)[0]
+#         flipped = flipper.multinomial(1, P[i, :][0], 1)[0]
         new_y[idx] = np.where(flipped == 1)[0]
 
     return new_y
@@ -121,7 +130,7 @@ def multiclass_noisify(y, P, random_state=123):
 
 # noisify_pairflip call the function "multiclass_noisify"
 def noisify_pairflip(y_train, noise, random_state=123, nb_classes=10):
-    """mistakes:
+    """ mistakes:
         flip in the pair
     """
     P = np.eye(nb_classes)
@@ -145,32 +154,28 @@ def noisify_pairflip(y_train, noise, random_state=123, nb_classes=10):
     return y_train, actual_noise
 
 def noisify_multiclass_symmetric(y_train, noise, random_state=123, nb_classes=10):
-    """mistakes:
+    """ mistakes:
         flip in the symmetric way
     """
     P = np.ones((nb_classes, nb_classes))
     n = noise
-    P = (n / (nb_classes - 1)) * P
+    P = (n / (nb_classes - 1)) * P  # convert to other classes with equal probabilities (p = noise/(n-1))
 
     if n > 0.0:
-        # 0 -> 1
-        P[0, 0] = 1. - n
-        for i in range(1, nb_classes-1):
+        for i in range(nb_classes):
             P[i, i] = 1. - n
-        P[nb_classes-1, nb_classes-1] = 1. - n
 
         y_train_noisy = multiclass_noisify(y_train, P=P, random_state=random_state)
         actual_noise = (y_train_noisy != y_train).mean()
         assert actual_noise > 0.0
         print('Actual noise %.2f' % actual_noise)
         y_train = y_train_noisy
-    # print(P)
 
     return y_train, actual_noise
 
 
 def noisify_mnist_asymmetric(y_train, noise, random_state=123):
-    """mistakes:
+    """ mistakes:
         1 <- 7
         2 -> 7
         3 -> 8

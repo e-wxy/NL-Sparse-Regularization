@@ -53,6 +53,20 @@ CIFAR100_CONFIG = {
     "NCEandMAE": NCEandMAE(alpha=10, beta=1, num_classes=100),
     "NCEandRCE": NCEandRCE(alpha=10, beta=1, num_classes=100),
 }
+ISIC2018_CONFIG = {
+    "CE": nn.CrossEntropyLoss(),
+    "FL": FocalLoss(gamma=0.5),
+    "MAE": MAELoss(num_classes=7),
+    "GCE": GCELoss(num_classes=7, q=0.001),
+    "SCE": SCELoss(num_classes=7, a=6, b=0.1),
+    # "NLNL": NLNL(train_loader, num_classes=10),
+    "NFL": NormalizedFocalLoss(gamma=2, num_classes=7),
+    "NGCE": NGCELoss(num_classes=7),
+    "NCE": NCELoss(num_classes=7),
+    "NFL+RCE": NFLandRCE(alpha=10, beta=1, num_classes=7, gamma=0.5),
+    "NCEandMAE": NCEandMAE(alpha=10, beta=1, num_classes=7),
+    "NCEandRCE": NCEandRCE(alpha=10, beta=1, num_classes=7),
+}
 
 def get_loss_config(dataset, train_loader, num_classes, loss='CE', is_sparse=True):
     if loss == 'GCE' and not is_sparse:
@@ -76,6 +90,13 @@ def get_loss_config(dataset, train_loader, num_classes, loss='CE', is_sparse=Tru
             return NLNL(train_loader, num_classes=100)
         elif loss in CIFAR100_CONFIG:
             return CIFAR100_CONFIG[loss]
+        else:
+            raise ValueError('Not Implemented')
+    if dataset == 'ISIC2018':
+        if loss == 'NLNL':
+            return NLNL(train_loader, num_classes=7)
+        elif loss in ISIC2018_CONFIG:
+            return ISIC2018_CONFIG[loss]
         else:
             raise ValueError('Not Implemented')
 
@@ -106,6 +127,11 @@ CIFAR100_params = {
     'FL+SR': (0.5, 0.01, 10, 1.02, 1),
     'GCE+SR': (0.5, 0.01, 10, 1.02, 1),
 }
+ISIC2018_params = {
+    'CE+SR': (0.5, 0.01, 10, 1.02, 1),
+    'FL+SR': (0.5, 0.01, 10, 1.02, 1),
+    'GCE+SR': (0.5, 0.01, 10, 1.02, 1),
+}
 
 def get_params_sr(dataset, label):
     if label.endswith('+SR'):
@@ -115,5 +141,7 @@ def get_params_sr(dataset, label):
             return CIFAR10_params[label]
         elif dataset == 'CIFAR100':
             return CIFAR100_params[label]
+        elif dataset == 'ISIC2018':
+            return ISIC2018_params[label]
     else:
         return 0, 0, 0, 0, 0

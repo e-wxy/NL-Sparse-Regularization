@@ -9,6 +9,7 @@ import torch
 import random
 from data.mnist import MNIST
 from data.cifar import CIFAR10, CIFAR100
+from data.isic import ISIC2018, Annotation
 
 
 def build_for_cifar100(size, noise):
@@ -288,7 +289,7 @@ class DatasetGenerator():
                 transforms.ToTensor(),
                 transforms.Normalize(CIFAR_MEAN, CIFAR_STD)])
 
-            train_dataset = cifar100Nosiy(root=self.data_path,
+            train_dataset = cifar100Nosiy(root=self.data_path + '/CIFAR100',
                                           train=True,
                                           transform=train_transform,
                                           download=True,
@@ -296,7 +297,7 @@ class DatasetGenerator():
                                           seed=self.seed,
                                           nosiy_rate=self.noise_rate)
 
-            test_dataset = datasets.CIFAR100(root=self.data_path,
+            test_dataset = datasets.CIFAR100(root=self.data_path + '/CIFAR100',
                                              train=False,
                                              transform=test_transform,
                                              download=True)
@@ -315,17 +316,48 @@ class DatasetGenerator():
                 transforms.ToTensor(),
                 transforms.Normalize(CIFAR_MEAN, CIFAR_STD)])
 
-            train_dataset = cifar10Nosiy(root=self.data_path,
+            train_dataset = cifar10Nosiy(root=self.data_path + '/CIFAR10',
                                          train=True,
                                          transform=train_transform,
                                          download=True,
                                          asym=self.asym,
                                          nosiy_rate=self.noise_rate)
 
-            test_dataset = datasets.CIFAR10(root=self.data_path,
+            test_dataset = CIFAR10(root=self.data_path + '/CIFAR10',
                                             train=False,
                                             transform=test_transform,
                                             download=True)
+
+        elif self.dataset_type == 'ISIC2018':
+            ISIC_MEAN = [0.485, 0.456, 0.406]
+            ISIC_STD = [0.229, 0.224, 0.225]
+            train_transform = transforms.Compose([
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomVerticalFlip(p=0.5),
+                transforms.RandomRotation(30),
+                transforms.RandomResizedCrop(224, scale=(0.4, 1), ratio=(3/4, 4/3)),
+                transforms.ToTensor(),
+                transforms.Normalize(ISIC_MEAN, ISIC_STD)])
+
+            test_transform = transforms.Compose([
+                transforms.CenterCrop((450, 450)),
+                transforms.Resize((244, 244)),
+                transforms.ToTensor(),
+                transforms.Normalize(ISIC_MEAN, ISIC_STD)])
+
+            train_dataset = ISIC2018(root=self.data_path+'/2018',
+                                     train=True,
+                                     transform=train_transform,
+                                     noise_type=self.noise_type,
+                                     noise_rate=self.noise_rate,
+                                     )
+            test_dataset = ISIC2018(root=self.data_path+'/2018',
+                                    train=False,
+                                    transform=test_transform,
+                                    noise_type=self.noise_type,
+                                    noise_rate=self.noise_rate,
+                                    )
+
         else:
             raise("Unknown Dataset")
 

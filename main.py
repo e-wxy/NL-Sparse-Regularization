@@ -4,7 +4,9 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# from torchvision.models import resnet34
+from torchvision import models
+from collections import OrderedDict
+
 from dataset import DatasetGenerator
 from models import *
 from losses import *
@@ -22,14 +24,14 @@ plt.figure(figsize=(20, 20), dpi=600)
 
 
 parser = argparse.ArgumentParser(description='Robust loss for learning with noisy labels')
-parser.add_argument('--dataset', type=str, default="MNIST", metavar='DATA', help='Dataset name (default: CIFAR10)')
-parser.add_argument('--root', type=str, default="../database/", help='the data root')
+parser.add_argument('--dataset', type=str, default="ISIC2018", metavar='DATA', help='Dataset name (default: ISIC2018)')
+parser.add_argument('--root', type=str, default="../Robust-Skin-Lesion-Diagnosis/Data", help='the data root')
 parser.add_argument('--noise_type', type=str, default='symmetric', help='the noise type: clean, symmetric, pairflip, asymmetric')
-parser.add_argument('--noise_rate', type=float, default=0.8, help='the noise rate')
+parser.add_argument('--noise_rate', type=float, default=0.4, help='the noise rate')
 parser.add_argument('--gpus', type=str, default='1')
 # learning settings
-parser.add_argument('--batch_size', type=int, default=128, help='batch size')
-parser.add_argument('--num_workers', type=int, default=10, help='the number of worker for loading data')
+parser.add_argument('--batch_size', type=int, default=64, help='batch size')
+parser.add_argument('--num_workers', type=int, default=0, help='the number of worker for loading data')
 parser.add_argument('--grad_bound', type=float, default=5., help='the gradient norm bound')
 parser.add_argument('--seed', type=int, default=123)
 
@@ -92,6 +94,20 @@ def evaluate(loader, model):
     return acc
 
 def calculate_loss(criterion, out, y, norm=None, lamb=None, tau=None, p=None):
+    """
+
+    Args:
+        criterion (_type_): _description_
+        out (_type_): _description_
+        y (_type_): _description_
+        norm (_type_, optional): _description_. Defaults to None.
+        lamb (_type_, optional): _description_. Defaults to None.
+        tau (float): temperater in softmax. (0, 1).
+        p (float): p-norm. 0.01, 0.1.
+
+    Returns:
+        _type_: _description_
+    """
     if args.is_sparse:
         if args.dataset != 'MNIST':
             out = F.normalize(out, dim=1)
@@ -100,8 +116,10 @@ def calculate_loss(criterion, out, y, norm=None, lamb=None, tau=None, p=None):
         loss = criterion(out, y)
     return loss
 
-
-data_loader = DatasetGenerator(data_path=os.path.join(args.root, args.dataset),
+# data prep
+data_loader = DatasetGenerator(train_batch_size=args.batch_size,
+                               eval_batch_size=args.batch_size*2,
+                               data_path=args.root, # os.path.join(args.root, args.dataset),
                                num_of_workers=args.num_workers,
                                seed=args.seed,
                                asym=args.noise_type=='asymmetric',
@@ -132,9 +150,18 @@ elif args.dataset == 'CIFAR100':
     lr = 0.1
     epochs = 200
     lamb = 10 if asymm else 4
+elif args.dataset == 'ISIC2018':
+    in_channels = 3
+    num_classes = 7
+    weight_decay = 1e-4
+    lr = 1e-4
+    epochs = 100
 else:
     raise ValueError('Invalid value {}'.format(args.dataset))
 
+
+
+# train
 criterion = get_loss_config(args.dataset, train_loader, num_classes=num_classes, loss=args.loss, is_sparse=args.is_sparse)
 if args.is_sparse:
     norm = pNorm(p)
@@ -142,10 +169,25 @@ else:
     norm = None
 print(label)
 
-if args.dataset != 'CIFAR100':
+if args.dataset == 'ISIC2018':
+    model = models.densenet201(pretrained=True)
+    # freeze layers
+    for param in model.parameters():
+        param.requires_grad = False
+    classifier = nn.Sequential(OrderedDict([
+        ('fc0', nn.Linear(1920, 256)),
+        ('norm0', nn.BatchNorm1d(256)),
+        ('relu0', nn.ReLU(inplace=True)),
+        ('fc1', nn.Linear(256, 7))
+    ]))
+    model.classifier = classifier
+    model.to(device)
+    
+elif args.dataset != 'CIFAR100':
     model = CNN(type=args.dataset).to(device)
 else:
     model = ResNet34(num_classes=100).to(device)
+    
 optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
 scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0.0)
 # scheduler = StepLR(optimizer, gamma=0.1, step_size=25)
@@ -165,5 +207,6 @@ for ep in range(epochs):
     scheduler.step()
     test_acc = evaluate(test_loader, model)
     log('Iter {}: loss={:.4f}, test_acc={:.4f}'.format(ep, total_loss, test_acc))
+    # update lamb
     if (ep + 1) % freq == 0:
         lamb = lamb * rho
