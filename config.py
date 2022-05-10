@@ -128,12 +128,15 @@ CIFAR100_params = {
     'GCE+SR': (0.5, 0.01, 10, 1.02, 1),
 }
 ISIC2018_params = {
-    'CE+SR': (0.5, 0.01, 10, 1.02, 1),
-    'FL+SR': (0.5, 0.01, 10, 1.02, 1),
-    'GCE+SR': (0.5, 0.01, 10, 1.02, 1),
+    'CE+SR': (0.5, 0.01, 5, 1.002, 1),
+    'FL+SR': (0.5, 0.01, 5, 1.002, 1),
+    'GCE+SR': (0.5, 0.01, 5, 1.002, 1),
 }
 
 def get_params_sr(dataset, label):
+    """
+    Returns: tau, p, lamb, rho, freq
+    """
     if label.endswith('+SR'):
         if dataset == 'MNIST':
             return MNIST_params[label]

@@ -28,16 +28,16 @@ parser.add_argument('--dataset', type=str, default="ISIC2018", metavar='DATA', h
 parser.add_argument('--root', type=str, default="../Robust-Skin-Lesion-Diagnosis/Data", help='the data root')
 parser.add_argument('--noise_type', type=str, default='symmetric', help='the noise type: clean, symmetric, pairflip, asymmetric')
 parser.add_argument('--noise_rate', type=float, default=0.4, help='the noise rate')
-parser.add_argument('--gpus', type=str, default='1')
+parser.add_argument('--gpus', type=str, default='0')
 # learning settings
-parser.add_argument('--batch_size', type=int, default=64, help='batch size')
+parser.add_argument('--batch_size', type=int, default=100, help='batch size')
 parser.add_argument('--num_workers', type=int, default=0, help='the number of worker for loading data')
 parser.add_argument('--grad_bound', type=float, default=5., help='the gradient norm bound')
 parser.add_argument('--seed', type=int, default=123)
 
 
 parser.add_argument('--is_sparse', type=int, default=1, help='if use the sparse regularizatoin mechanism')
-parser.add_argument('--loss', type=str, default='GCE', help='the loss functions: CE, FL, GCE')
+parser.add_argument('--loss', type=str, default='FL', help='the loss functions: CE, FL, GCE')
 
 args = parser.parse_args()
 
@@ -194,19 +194,27 @@ scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0.0)
 for ep in range(epochs):
     model.train()
     total_loss = 0.
+    correct = 0
     for batch_x, batch_y in train_loader:
         batch_x, batch_y = batch_x.to(device), batch_y.to(device)
         model.zero_grad()
         optimizer.zero_grad()
         out = model(batch_x)
+        probs = F.softmax(out, dim=1)
+        pred = torch.argmax(probs, 1)
+        correct += (pred==batch_y).sum().item()
         loss = calculate_loss(criterion, out, batch_y, norm, lamb, tau, p)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_bound)
         optimizer.step()
         total_loss += loss.item()
     scheduler.step()
+    train_acc = correct / len(train_loader.dataset)
     test_acc = evaluate(test_loader, model)
-    log('Iter {}: loss={:.4f}, test_acc={:.4f}'.format(ep, total_loss, test_acc))
+    print('Iter {}: loss={:.4f}, train_acc={:.4f}, test_acc={:.4f}'.format(ep, total_loss, train_acc, test_acc))
     # update lamb
-    if (ep + 1) % freq == 0:
-        lamb = lamb * rho
+    if args.noise_type != 'clean':
+        if (ep + 1) % freq == 0:
+            lamb = lamb * rho
+        
+torch.save(model, 'model/1.pkl')
