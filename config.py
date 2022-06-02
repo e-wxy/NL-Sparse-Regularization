@@ -1,150 +1,92 @@
-import torch
-import torch.nn as nn
-from losses import *
+from noise.loss import *
+from torchvision import transforms
+from noise.data import NoisyISIC2018
+from torch.utils import data
+import os
+
+__all__ = ["get_config", "generate_data"]
 
 
-
-import torch
-import torch.nn as nn
-from losses import *
-
-
-MNIST_CONFIG = {
-    "CE": nn.CrossEntropyLoss(),
-    "FL": FocalLoss(gamma=0.5),
-    "MAE": MAELoss(num_classes=10),
-    "GCE": GCELoss(num_classes=10, q=0.01),
-    "SCE": SCELoss(num_classes=10),
-    # "NLNL": NLNL(train_loader, num_classes=10),
-    "NFL": NormalizedFocalLoss(gamma=0.5, num_classes=10),
-    "NGCE": NGCELoss(num_classes=10),
-    "NCE": NCELoss(num_classes=10),
-    "NFL+RCE": NFLandRCE(alpha=1, beta=100, num_classes=10, gamma=0.5),
-    "NCEandMAE": NCEandMAE(alpha=1, beta=100, num_classes=10),
-    "NCEandRCE": NCEandRCE(alpha=1, beta=100, num_classes=10),
-}
-
-CIFAR10_CONFIG = {
-    "CE": nn.CrossEntropyLoss(),
-    "FL": FocalLoss(gamma=0.5),
-    "MAE": MAELoss(num_classes=10),
-    "GCE": GCELoss(num_classes=10, q=0.01),
-    "SCE": SCELoss(num_classes=10, a=0.1, b=1),
-    # "NLNL": NLNL(train_loader, num_classes=10),
-    "NFL": NormalizedFocalLoss(gamma=0.5, num_classes=10),
-    "NGCE": NGCELoss(num_classes=10),
-    "NCE": NCELoss(num_classes=10),
-    "NFL+RCE": NFLandRCE(alpha=1, beta=1, num_classes=10, gamma=0.5),
-    "NCEandMAE": NCEandMAE(alpha=1, beta=1, num_classes=10),
-    "NCEandRCE": NCEandRCE(alpha=1, beta=1, num_classes=10),
-}
-
-CIFAR100_CONFIG = {
-    "CE": nn.CrossEntropyLoss(),
-    "FL": FocalLoss(gamma=0.5),
-    "MAE": MAELoss(num_classes=100),
-    "GCE": GCELoss(num_classes=100, q=0.001),
-    "SCE": SCELoss(num_classes=100, a=6, b=0.1),
-    # "NLNL": NLNL(train_loader, num_classes=10),
-    "NFL": NormalizedFocalLoss(gamma=0.5, num_classes=100),
-    "NGCE": NGCELoss(num_classes=100),
-    "NCE": NCELoss(num_classes=100),
-    "NFL+RCE": NFLandRCE(alpha=10, beta=1, num_classes=100, gamma=0.5),
-    "NCEandMAE": NCEandMAE(alpha=10, beta=1, num_classes=100),
-    "NCEandRCE": NCEandRCE(alpha=10, beta=1, num_classes=100),
-}
-ISIC2018_CONFIG = {
-    "CE": nn.CrossEntropyLoss(),
-    "FL": FocalLoss(gamma=0.5),
-    "MAE": MAELoss(num_classes=7),
-    "GCE": GCELoss(num_classes=7, q=0.001),
-    "SCE": SCELoss(num_classes=7, a=6, b=0.1),
-    # "NLNL": NLNL(train_loader, num_classes=10),
-    "NFL": NormalizedFocalLoss(gamma=2, num_classes=7),
-    "NGCE": NGCELoss(num_classes=7),
-    "NCE": NCELoss(num_classes=7),
-    "NFL+RCE": NFLandRCE(alpha=10, beta=1, num_classes=7, gamma=0.5),
-    "NCEandMAE": NCEandMAE(alpha=10, beta=1, num_classes=7),
-    "NCEandRCE": NCEandRCE(alpha=10, beta=1, num_classes=7),
-}
-
-def get_loss_config(dataset, train_loader, num_classes, loss='CE', is_sparse=True):
-    if loss == 'GCE' and not is_sparse:
-        return GCELoss(num_classes=num_classes)
-    if dataset == 'MNIST':
-        if loss == 'NLNL':
-            return NLNL(train_loader, num_classes=10)
-        elif loss in MNIST_CONFIG:
-            return MNIST_CONFIG[loss]
-        else:
-            raise ValueError('Not Implemented')
-    if dataset == 'CIFAR10':
-        if loss == 'NLNL':
-            return NLNL(train_loader, num_classes=10)
-        elif loss in CIFAR10_CONFIG:
-            return CIFAR10_CONFIG[loss]
-        else:
-            raise ValueError('Not Implemented')
-    if dataset == 'CIFAR100':
-        if loss == 'NLNL':
-            return NLNL(train_loader, num_classes=100)
-        elif loss in CIFAR100_CONFIG:
-            return CIFAR100_CONFIG[loss]
-        else:
-            raise ValueError('Not Implemented')
-    if dataset == 'ISIC2018':
-        if loss == 'NLNL':
-            return NLNL(train_loader, num_classes=7)
-        elif loss in ISIC2018_CONFIG:
-            return ISIC2018_CONFIG[loss]
-        else:
-            raise ValueError('Not Implemented')
+CLASS_NUM = 7
+# TAU, P, LAMB, RHO, FREQ = 0.5, 0.01, 5, 1.002, 1
+pth_root = './Data'
 
 
-def get_mnist_exp_criterions_and_names(num_classes):
-    return list(MNIST_CONFIG.keys()), list(MNIST_CONFIG.values())
-
-def get_cifar10_exp_criterions_and_names(num_classes, train_loader=None):
-    return list(CIFAR10_CONFIG.keys()), list(CIFAR10_CONFIG.values())
-
-def get_cifar100_exp_criterions_and_names(num_classes, train_loader):
-    return list(CIFAR100_CONFIG.keys()), list(CIFAR100_CONFIG.values())
+class_weight = [1 for _ in range(CLASS_NUM)]
 
 
-
-MNIST_params = {
-    'CE+SR': (0.1, 0.1, 4, 2, 5),
-    'FL+SR': (0.1, 0.1, 4, 2, 5),
-    'GCE+SR': (0.5, 0.1, 3, 2, 5)
-}
-CIFAR10_params = {
-    'CE+SR': (0.5, 0.1, 1.2, 1.03, 1),
-    'FL+SR': (0.5, 0.1, 1.2, 1.03, 1),
-    'GCE+SR': (0.5, 0.1, 1.2, 1.03, 1),
-}
-CIFAR100_params = {
-    'CE+SR': (0.5, 0.01, 10, 1.02, 1),
-    'FL+SR': (0.5, 0.01, 10, 1.02, 1),
-    'GCE+SR': (0.5, 0.01, 10, 1.02, 1),
-}
-ISIC2018_params = {
-    'CE+SR': (0.5, 0.01, 5, 1.002, 1),
-    'FL+SR': (0.5, 0.01, 5, 1.002, 1),
-    'GCE+SR': (0.5, 0.01, 5, 1.002, 1),
-}
-
-def get_params_sr(dataset, label):
-    """
-    Returns: tau, p, lamb, rho, freq
-    """
-    if label.endswith('+SR'):
-        if dataset == 'MNIST':
-            return MNIST_params[label]
-        elif dataset == 'CIFAR10':
-            return CIFAR10_params[label]
-        elif dataset == 'CIFAR100':
-            return CIFAR100_params[label]
-        elif dataset == 'ISIC2018':
-            return ISIC2018_params[label]
+def get_config(exp_id: str):
+    tau, p, lamb, rho, freq = 0.5, 0.1, 5, 1.005, 1
+    loss_id, noise_id = exp_id.split('-')
+    
+    # configure loss
+    if loss_id == '1':
+        criterion = FocalLoss(alpha=class_weight)
+        freq = 0
+    elif loss_id == '2':
+        criterion = SR(FocalLoss(alpha=class_weight), tau, p, lamb)
+    elif loss_id == '3':
+        criterion = GCELoss(num_classes=CLASS_NUM)
+        freq = 0
     else:
-        return 0, 0, 0, 0, 0
+        raise ValueError("Experiment ID doesn't exist")
+
+    # configure noisy labels
+    noise_id = int(noise_id)
+    if noise_id % 2 == 0:
+        noise_type = 'asymmetric'
+    else:
+        noise_type = 'symmetric'
+        
+    if noise_id // 2 == 0:
+        noise_rate = 0
+    elif noise_id // 2 == 1:
+        noise_rate = .1
+    elif noise_id // 2 == 2:
+        noise_rate = .4
+    else:
+        raise ValueError("Experiment ID doesn't exist")
+
+    return criterion, noise_type, noise_rate, rho, freq
+
+
+# transforms
+trans_train = transforms.Compose([
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomVerticalFlip(p=0.5),
+    transforms.RandomRotation(30),
+    transforms.RandomResizedCrop(224, scale=(0.4, 1), ratio=(3/4, 4/3)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+trans_test = transforms.Compose([
+    transforms.Resize(224),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+
+def generate_data(mode, noise_type, noise_rate, batch_size, num_workers, random_seed):
+    if mode == 'train':
+        train_data = NoisyISIC2018(ann_file=os.path.join(pth_root, 'Train_GroundTruth.csv'),
+                                img_dir=os.path.join(pth_root, 'ISIC2018_Task3_Training_Input'),
+                                transform=trans_train, noise_type=noise_type, noise_rate=noise_rate, random_state=random_seed)
+        data_loader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=num_workers)
+
+    elif mode == 'test':
+        test_data = NoisyISIC2018(ann_file=os.path.join(pth_root, 'Test_GroundTruth.csv'),
+                                img_dir=os.path.join(pth_root, 'ISIC2018_Task3_Training_Input'),
+                                transform=trans_test, noise_type=noise_type, noise_rate=noise_rate, random_state=random_seed)
+        data_loader = data.DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    
+    elif mode == 'valid':
+        valid_data = NoisyISIC2018(ann_file=os.path.join(pth_root, 'ISIC2018_Task3_Validation_GroundTruth.csv'),
+                                img_dir=os.path.join(pth_root, 'ISIC2018_Task3_Validation_Input'),
+                                transform=trans_test, noise_type=noise_type, noise_rate=noise_rate, random_state=random_seed)
+        data_loader = data.DataLoader(valid_data, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return data_loader
